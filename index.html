@@ -13,6 +13,7 @@
 <body>
 <canvas id="c"></canvas>
 <script>
+// stuff menu controls
 let gravity = 1600;
 let blobness = 0.2;
 let showFace = true;
@@ -22,17 +23,19 @@ let showMenu = true;
 let wallInset = 0;
 let mitosis = false;
 let rainbowMode = false;
+
+// mitosis: a grabbed blob/yellow face splits once its stretched past splitStretch * diameter for splitHold ticks
 const splitStretch = 1.35;
 const splitHold = 8;
 const minSplitRadius = 18;
 const maxBlobs = 24;
 const startRadius = 90;
 
-const N = 40;
+const N = 40;              // points per blob
 const EPS = 0.0001;
 const SUBSTEPS = 3;
 const DT = 1 / 60 / SUBSTEPS;
-const MAX_SPEED = 30;
+const MAX_SPEED = 30;      // speed cap per substep, in px
 const perimIters = 5;
 
 const PANEL_W = 280;
@@ -65,6 +68,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const constrain = (v, a, b) => Math.min(Math.max(v, a), b);
 const dist = (x1, y1, x2, y2) => Math.hypot(x2 - x1, y2 - y1);
 
+// h, s, v in 0..1 -> [r, g, b] in 0..255
 function hsb(h, s, v) {
   h = (h % 1) * 6;
   const i = Math.floor(h);
@@ -188,16 +192,16 @@ class Button {
   }
 }
 
-const sBlob    = new Slider("blobness", 16, 226, 248, 0, 1, blobness, "pct");
-const sGrav    = new Slider("gravity", 16, 258, 248, 0, 3000, gravity, "num");
+const sBlob = new Slider("blobness", 16, 226, 248, 0, 1, blobness, "pct");
+const sGrav = new Slider("gravity", 16, 258, 248, 0, 3000, gravity, "num");
 const sOutline = new Slider("outline", 16, 290, 248, 0, 2, outlineScale, "pct");
-const sWalls   = new Slider("shrink walls", 16, 322, 248, 0, 200, wallInset, "px");
+const sWalls = new Slider("shrink walls", 16, 322, 248, 0, 200, wallInset, "px");
 
 const sSize = new Slider("size", 16, 376, 248, 30, 180, 80, "px");
-const sHue  = new Slider("hue", 16, 408, 248, 0, 1, 0.55, "pct");
+const sHue = new Slider("hue", 16, 408, 248, 0, 1, 0.55, "pct");
 sHue.rainbow = true;
-const sSat  = new Slider("saturation", 16, 440, 248, 0, 1, 0.8, "pct");
-const sBri  = new Slider("brightness", 16, 472, 248, 0, 1, 1.0, "pct");
+const sSat = new Slider("saturation", 16, 440, 248, 0, 1, 0.8, "pct");
+const sBri = new Slider("brightness", 16, 472, 248, 0, 1, 1.0, "pct");
 
 const sBgHue = new Slider("hue", 16, 526, 248, 0, 1, 0.6, "pct");
 sBgHue.rainbow = true;
@@ -206,15 +210,16 @@ const sBgBri = new Slider("brightness", 16, 590, 248, 0, 1, 0, "pct");
 
 const sliders = [sBlob, sGrav, sOutline, sWalls, sSize, sHue, sSat, sBri, sBgHue, sBgSat, sBgBri];
 
-const bAdd     = new Button("add blob", 16, 16, 248, 34, "red");
-const bRemove  = new Button("remove last", 16, 56, 120, 30, "blue");
-const bClear   = new Button("clear all", 144, 56, 120, 30, "red");
-const bFace    = new Button("face", 16, 92, 120, 30, "toggle");
+const bAdd = new Button("add blob", 16, 16, 248, 34, "red");
+const bRemove = new Button("remove last", 16, 56, 120, 30, "blue");
+const bClear = new Button("clear all", 144, 56, 120, 30, "red");
+const bFace = new Button("face", 16, 92, 120, 30, "toggle");
 const bMitosis = new Button("mitosis", 144, 92, 120, 30, "toggle");
-const bFull    = new Button("fullscreen", 16, 128, 120, 30, "blue");
-const bHide    = new Button("hide menu", 144, 128, 120, 30, "blue");
-const bReset   = new Button("reset settings", 16, 608, 248, 34, "red");
-const bShow    = new Button("menu", 10, 10, 76, 30, "blue");
+const bFull = new Button("fullscreen", 16, 128, 120, 30, "blue");
+const bHide = new Button("hide menu", 144, 128, 120, 30, "blue");
+const bReset = new Button("reset settings", 16, 608, 248, 34, "red");
+const bShow = new Button("menu", 10, 10, 76, 30, "blue");
+const buttons = [bAdd, bRemove, bClear, bFace, bMitosis, bFull, bHide, bReset];
 bFace.on = true;
 
 const newColor = () => hsb(sHue.value, sSat.value, sBri.value);
@@ -223,6 +228,7 @@ const bgColor = () => hsb(sBgHue.value, sBgSat.value, sBgBri.value);
 
 class Blob {
   constructor(cx, cy, r, col) {
+    // verlet: there is no velocity field, it is just x - xLast
     this.x = new Float64Array(N);
     this.y = new Float64Array(N);
     this.xLast = new Float64Array(N);
@@ -251,6 +257,7 @@ class Blob {
   integrate() {
     const g = gravity * DT * DT;
     for (let i = 0; i < N; i++) {
+      // the 0.998 is a bit of drag
       let vx = (this.x[i] - this.xLast[i]) * 0.998;
       let vy = (this.y[i] - this.yLast[i]) * 0.998;
       const sp = Math.sqrt(vx * vx + vy * vy);
@@ -266,6 +273,7 @@ class Blob {
   }
 
   fixPerimeter() {
+    // blobness 0 = stiff (0.95), 1 = floppy (0.15)
     const relax = 0.95 + (0.15 - 0.95) * blobness;
     const x = this.x, y = this.y, fx = this.fx, fy = this.fy;
     for (let j = 0; j < perimIters; j++) {
@@ -304,6 +312,7 @@ class Blob {
       perimeter += len[i];
     }
 
+    // push the outline along its normals so the area drifts back to the target
     const deltaArea = this.areaTarget - this.getArea();
     const push = 0.5 * deltaArea / perimeter;
 
@@ -334,13 +343,14 @@ class Blob {
       if (this.y[i] < top) this.y[i] = top;
       if (this.y[i] > floorY) {
         this.y[i] = floorY;
-        this.xLast[i] = this.x[i];
+        this.xLast[i] = this.x[i]; // no sideways speed on the floor, cheap friction
       }
     }
   }
 
   contains(px, py) {
     const x = this.x, y = this.y;
+    // ray casting
     let inside = false;
     for (let i = 0, j = N - 1; i < N; j = i++) {
       if ((y[i] > py) !== (y[j] > py)) {
@@ -374,6 +384,7 @@ class Blob {
     ctx.closePath();
 
     if (rainbowMode) {
+      // hue moves every 3 frames, and each blob is offset so they differ
       const step = Math.floor(frameCount / 3);
       ctx.fillStyle = css(hsb(step * 0.11 + index * 0.17, 1, 1));
     } else {
@@ -399,6 +410,7 @@ class Blob {
     ctx.lineWidth = w;
     ctx.lineCap = "round";
 
+    // eyes and mouth sit between pairs of outline points, so these indices only work for N = 40
     const a = 36, b = 1, c = 23, d = 18;
     const eyeTop = 0.09;
     const eyeBottom = 0.15;
@@ -441,6 +453,7 @@ function addRandomBlob() {
 
 
 function pushOut(a, b) {
+  // bounding boxes first, the real check below is the slow part
   if (!boxesOverlap(a, b)) return;
 
   for (let i = 0; i < N; i++) {
@@ -526,6 +539,7 @@ function checkMitosis() {
     return;
   }
 
+  // how far the grabbed point has been pulled from the rest of the blob
   if (grabbed.reachFrom(grabIndex) > splitStretch * 2 * grabbed.radius) stretchTimer++;
   else stretchTimer = 0;
 
@@ -582,6 +596,7 @@ function split(index) {
   bx /= nb; by /= nb;
   vx /= N; vy /= N;
 
+  // half the area each, so radius * sqrt(1/2)
   const r = b.radius * 0.7071;
   const lo = wallInset + r;
   const one = new Blob(constrain(ax, lo, width - lo), constrain(ay, lo, height - lo), r, b.col);
@@ -610,19 +625,13 @@ function resetSettings() {
 }
 
 function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
-  } else if (document.exitFullscreen) {
-    document.exitFullscreen();
-  }
+  if (document.fullscreenElement) document.exitFullscreen?.();
+  else document.documentElement.requestFullscreen?.()?.catch(() => {});
 }
 
 
-function overPanel(mx, my) {
-  if (!showMenu) return false;
-  return mx < PANEL_W;
+function overPanel(mx) {
+  return showMenu && mx < PANEL_W;
 }
 
 function drawPanel() {
@@ -640,14 +649,7 @@ function drawPanel() {
 
   for (const s of sliders) s.display();
 
-  bAdd.display();
-  bRemove.display();
-  bClear.display();
-  bFace.display();
-  bMitosis.display();
-  bFull.display();
-  bHide.display();
-  bReset.display();
+  for (const b of buttons) b.display();
 
   ctx.fillStyle = "#fff";
   ctx.fillRect(16, 166, 248, 40);
@@ -660,8 +662,6 @@ function drawPanel() {
 
   ctx.font = "bold 15px " + FONT;
   ctx.fillStyle = "#fff";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
   ctx.fillText("new blob color", 16, 350);
   ctx.fillText("background color", 16, 502);
 
@@ -729,6 +729,7 @@ function frame(now) {
   last = now;
   acc += dt;
   let steps = 0;
+  // fixed 60hz updates, at most 4 per frame so a backgrounded tab does not try to catch up
   while (acc >= 1 / 60 && steps < 4) {
     update();
     acc -= 1 / 60;
@@ -841,6 +842,7 @@ window.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
 
   if (e.key.length === 1) {
+    // last 7 keys, same length as awesome
     typed = (typed + e.key.toLowerCase()).slice(-7);
     if (typed === "awesome") {
       rainbowMode = !rainbowMode;
@@ -866,3 +868,5 @@ requestAnimationFrame(frame);
 </script>
 </body>
 </html>
+
+   //verity game #imsofunny
